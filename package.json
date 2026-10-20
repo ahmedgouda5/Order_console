@@ -1,0 +1,23 @@
+{
+  "name": "orders-console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SARH Business Solutions Orders Console - monorepo",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace @orders-console/api",
+    "dev:web": "npm run dev --workspace @orders-console/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "seed": "npm run seed --workspace @orders-console/api",
+    "docker:build": "docker compose up --build -d",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
