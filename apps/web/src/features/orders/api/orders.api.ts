@@ -43,6 +43,11 @@ export type CreateOrderPayload = {
   status: string;
   amount: string;
   currency: string;
+  items?: Array<{
+    name: string;
+    quantity: number;
+    unitPrice: string;
+  }>;
 };
 
 export async function createOrder(

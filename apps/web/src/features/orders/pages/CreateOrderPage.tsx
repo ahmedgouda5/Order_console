@@ -161,7 +161,7 @@ export function CreateOrderPage() {
           <p>
             Order <strong className="mono">{result.order.orderNumber}</strong> for{" "}
             <strong>{result.order.customerName}</strong> ({result.order.status},{" "}
-            {result.order.amount} {result.order.currency}, {result.order.status === undefined ? 0 : ""}).
+            {result.order.amount} {result.order.currency}).
           </p>
           <div className="success-actions">
             <Link to="/orders" className="button">
