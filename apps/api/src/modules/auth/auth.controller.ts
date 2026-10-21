@@ -26,7 +26,17 @@ export async function loginController(
       });
     }
 
-    return res.status(200).json(resultUser);
+    res.cookie("token", resultUser.token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      user: resultUser.user,
+    });
   } catch (error) {
     next(error);
   }

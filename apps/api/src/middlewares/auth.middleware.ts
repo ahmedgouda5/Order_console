@@ -43,27 +43,48 @@ export function verifyToken(token: string): AuthUser | null {
   }
 }
 
+const AUTH_COOKIE_NAME = "token";
+
+function readAuthCookie(req: Request): string | null {
+  const cookieHeader = Array.isArray(req.headers.cookie)
+    ? req.headers.cookie[0]
+    : req.headers.cookie;
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  for (const part of cookieHeader.split(";")) {
+    const separator = part.indexOf("=");
+
+    if (separator === -1) {
+      continue;
+    }
+
+    const name = part.slice(0, separator).trim();
+
+    if (name !== AUTH_COOKIE_NAME) {
+      continue;
+    }
+
+    const value = part.slice(separator + 1).trim();
+
+    return value ? decodeURIComponent(value) : null;
+  }
+
+  return null;
+}
+
 export function authenticateToken(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  const header = req.headers["authorization"];
-  const headerValue = Array.isArray(header) ? header[0] : header;
-
-  if (!headerValue) {
-    return res.status(401).json({
-      message: "Missing Authorization header. Provide 'Bearer <token>'.",
-    });
-  }
-
-  const [scheme, ...rest] = headerValue.trim().split(" ");
-  const token =
-    scheme.toLowerCase() === "bearer" ? rest.join(" ").trim() : scheme;
+  const token = readAuthCookie(req);
 
   if (!token) {
     return res.status(401).json({
-      message: "Invalid Authorization header format.",
+      message: "Missing authentication token cookie.",
     });
   }
 
@@ -71,7 +92,7 @@ export function authenticateToken(
 
   if (!user) {
     return res.status(401).json({
-      message: "Invalid or expired token.",
+      message: "Invalid or expired token cookie.",
     });
   }
 
