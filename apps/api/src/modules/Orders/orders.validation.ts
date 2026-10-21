@@ -13,6 +13,16 @@ export const orderSortFields = ["createdAt", "amount"] as const;
 
 export const orderSortDirections = ["asc", "desc"] as const;
 
+const createOrderItemSchema = z.object({
+  name: z.string().trim().min(1).max(150),
+  quantity: z.coerce.number().int().min(1).max(999),
+  unitPrice: z.coerce
+    .number()
+    .gt(0)
+    .max(999_999)
+    .transform((value) => value.toFixed(2)),
+});
+
 export const createOrderSchema = z.object({
   customerName: z.string().trim().min(1).max(150),
   customerEmail: z.string().trim().email().max(255),
@@ -23,8 +33,15 @@ export const createOrderSchema = z.object({
     .max(99_999_999)
     .transform((value) => value.toFixed(2)),
   currency: z.string().trim().length(3).toUpperCase().default("USD"),
+  items: z
+    .array(createOrderItemSchema)
+    .min(1)
+    .max(20)
+    .optional(),
   idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
+
+export type CreateOrderItemInput = z.infer<typeof createOrderItemSchema>;
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 

@@ -2,7 +2,13 @@ import bcrypt from "bcrypt";
 import { faker } from "@faker-js/faker";
 import { sql } from "drizzle-orm";
 
-import { closeDb, db, orders, users } from "./index.js";
+import {
+  closeDb,
+  db,
+  orders,
+  orderItems,
+  users,
+} from "./index.js";
 import { orderStatusValues } from "../modules/Orders/orders.validation.js";
 
 const SEED_USERS = [
@@ -24,6 +30,12 @@ const SEED_USERS = [
     password: "User123!",
     role: "USER",
   },
+  {
+    name: "Agent User",
+    email: "agent@orders.local",
+    password: "Agent123!",
+    role: "AGENT",
+  },
 ] as const;
 
 const TOTAL_ORDERS = 50_000;
@@ -42,37 +54,79 @@ type OrderSeed = {
   updatedAt: Date;
 };
 
-function buildOrderBatch(batchIndex: number, batchSize: number): OrderSeed[] {
-  const batch: OrderSeed[] = [];
+type ItemSeed = {
+  orderNumber: string;
+  name: string;
+  quantity: number;
+  unitPrice: string;
+};
+
+type OrderWithItems = { order: OrderSeed; items: ItemSeed[] };
+
+function buildOrderWithItems(sequence: number): OrderWithItems {
+  const orderNumber = `ORD-${String(sequence).padStart(6, "0")}`;
+  const createdAt = faker.date.past({ years: 1 });
+
+  // 1 to 5 line items per order; total amount is the sum of item lines
+  // so the stored amount always matches the persisted items.
+  const itemCount = faker.number.int({ min: 1, max: 5 });
+  const items: ItemSeed[] = Array.from({ length: itemCount }, () => ({
+    orderNumber,
+    name: faker.commerce.productName().slice(0, 150),
+    quantity: faker.number.int({ min: 1, max: 5 }),
+    unitPrice: faker.commerce.price({ min: 1, max: 5_000, dec: 2 }),
+  }));
+
+  const total = items.reduce(
+    (sum, item) => sum + item.quantity * Number(item.unitPrice),
+    0,
+  );
+
+  const order: OrderSeed = {
+    orderNumber,
+    customerName: faker.person.fullName(),
+    customerEmail: faker.internet.email().toLowerCase(),
+    status: faker.helpers.arrayElement(orderStatusValues),
+    amount: total.toFixed(2),
+    currency: faker.helpers.arrayElement(CURRENCIES),
+    idempotencyKey: faker.string.uuid(),
+    createdAt,
+    updatedAt: faker.date.soon({
+      days: faker.number.int({ min: 1, max: 30 }),
+      refDate: createdAt,
+    }),
+  };
+
+  return { order, items };
+}
+
+function buildOrderBatch(batchIndex: number, batchSize: number): {
+  orders: OrderSeed[];
+  items: ItemSeed[];
+} {
+  const orders: OrderSeed[] = [];
+  const items: ItemSeed[] = [];
 
   for (let i = 0; i < batchSize; i++) {
-    const sequence = batchIndex * batchSize + i + 1;
-    const orderNumber = `ORD-${String(sequence).padStart(6, "0")}`;
-    const createdAt = faker.date.past({ years: 1 });
+    const { order, items: orderItems } = buildOrderWithItems(
+      batchIndex * batchSize + i + 1,
+    );
 
-    batch.push({
-      orderNumber,
-      customerName: faker.person.fullName(),
-      customerEmail: faker.internet.email().toLowerCase(),
-      status: faker.helpers.arrayElement(orderStatusValues),
-      amount: faker.commerce.price({ min: 1, max: 99_999, dec: 2 }),
-      currency: faker.helpers.arrayElement(CURRENCIES),
-      idempotencyKey: faker.string.uuid(),
-      createdAt,
-      updatedAt: faker.date.soon({
-        days: faker.number.int({ min: 1, max: 30 }),
-        refDate: createdAt,
-      }),
-    });
+    orders.push(order);
+    items.push(...orderItems);
   }
 
-  return batch;
+  return { orders, items };
 }
 
 async function seedOrders(): Promise<void> {
-  console.log(`Seeding ${TOTAL_ORDERS.toLocaleString()} orders...`);
+  console.log(`Seeding ${TOTAL_ORDERS.toLocaleString()} orders with 1–5 line items each...`);
 
-  await db.execute(sql`TRUNCATE TABLE ${orders}`);
+  await db.execute(
+    sql`TRUNCATE TABLE ${orderItems}, ${orders}`,
+  );
+
+  let totalItems = 0;
 
   for (
     let batchIndex = 0;
@@ -83,15 +137,41 @@ async function seedOrders(): Promise<void> {
       ORDER_BATCH_SIZE,
       TOTAL_ORDERS - batchIndex * ORDER_BATCH_SIZE,
     );
-    const batch = buildOrderBatch(batchIndex, batchSize);
+    const { orders: orderRows, items: itemRows } = buildOrderBatch(
+      batchIndex,
+      batchSize,
+    );
 
-    await db.insert(orders).values(batch);
+    // INSERT ... RETURNING preserves the VALUES order, so row N corresponds
+    // to orderRows[N]; we use that to link line items in one batch insert.
+    const inserted = await db
+      .insert(orders)
+      .values(orderRows)
+      .returning({ id: orders.id, orderNumber: orders.orderNumber });
+
+    const idByOrderNumber = new Map(
+      inserted.map((row) => [row.orderNumber, row.id]),
+    );
+
+    await db.insert(orderItems).values(
+      itemRows.map((item) => ({
+        orderId: idByOrderNumber.get(item.orderNumber)!,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+    );
+
+    totalItems += itemRows.length;
+
     console.log(
-      `Seeded orders: ${(batchIndex * ORDER_BATCH_SIZE + batchSize).toLocaleString()} / ${TOTAL_ORDERS.toLocaleString()}`,
+      `Seeded orders: ${(batchIndex * ORDER_BATCH_SIZE + batchSize).toLocaleString()} / ${TOTAL_ORDERS.toLocaleString()} (line items so far: ${totalItems.toLocaleString()})`,
     );
   }
 
-  console.log("Orders seeded successfully.");
+  console.log(
+    `Orders seeded successfully. Total line items: ${totalItems.toLocaleString()}`,
+  );
 }
 
 async function runSeed(): Promise<void> {

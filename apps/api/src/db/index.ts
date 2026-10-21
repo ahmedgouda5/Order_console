@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import { loadEnv } from "./env.js";
-import { orders } from "./schema/order.js";
+import { orders, orderItems } from "./schema/order.js";
 import { users } from "./schema/user.js";
 
 loadEnv();
@@ -19,10 +19,10 @@ export const pool = new Pool({ connectionString });
 
 export const db = drizzle({
   client: pool,
-  schema: { users, orders },
+  schema: { users, orders, orderItems },
 });
 
-export { users, orders };
+export { users, orders, orderItems };
 
 export async function closeDb(): Promise<void> {
   await pool.end();

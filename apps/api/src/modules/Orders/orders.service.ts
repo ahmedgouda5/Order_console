@@ -11,10 +11,11 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import { db, orders } from "../../db/index.js";
+import { db, orders, orderItems } from "../../db/index.js";
 import type { OrderRow } from "../../db/schema/order.js";
 import type {
   CreateOrderInput,
+  CreateOrderItemInput,
   DeleteOrderInput,
   ListOrdersByStatusInput,
   ListOrdersInput,
@@ -37,6 +38,15 @@ function generateOrderNumber(): string {
   return `ORD-${stamp}-${random}`;
 }
 
+export function resolveOrderTotal(items: CreateOrderItemInput[]): string {
+  const total = items.reduce(
+    (sum, item) => sum + item.quantity * Number(item.unitPrice),
+    0,
+  );
+
+  return total.toFixed(2);
+}
+
 export async function createOrder(
   input: CreateOrderInput & { idempotencyKey: string },
 ): Promise<{ order: OrderRow; replayed: boolean }> {
@@ -50,22 +60,41 @@ export async function createOrder(
     return { order: existing, replayed: true };
   }
 
-  const injected = await db
-    .insert(orders)
-    .values({
-      orderNumber: generateOrderNumber(),
-      customerName: input.customerName,
-      customerEmail: input.customerEmail,
-      status: input.status,
-      amount: input.amount,
-      currency: input.currency,
-      idempotencyKey: input.idempotencyKey,
-    })
-    .onConflictDoNothing({ target: orders.idempotencyKey })
-    .returning();
+  // The server recomputes the total from the line items whenever items are
+  // provided, so the authoritative amount is never trusting the client.
+  const amount = input.items ? resolveOrderTotal(input.items) : input.amount;
 
-  if (injected[0]) {
-    return { order: injected[0], replayed: false };
+  const insertedOrder = await db.transaction(async (tx) => {
+    const [order] = await tx
+      .insert(orders)
+      .values({
+        orderNumber: generateOrderNumber(),
+        customerName: input.customerName,
+        customerEmail: input.customerEmail,
+        status: input.status,
+        amount,
+        currency: input.currency,
+        idempotencyKey: input.idempotencyKey,
+      })
+      .onConflictDoNothing({ target: orders.idempotencyKey })
+      .returning();
+
+    if (order && input.items?.length) {
+      await tx.insert(orderItems).values(
+        input.items.map((item) => ({
+          orderId: order.id,
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+        })),
+      );
+    }
+
+    return order ?? null;
+  });
+
+  if (insertedOrder) {
+    return { order: insertedOrder, replayed: false };
   }
 
   const [raced] = await db
