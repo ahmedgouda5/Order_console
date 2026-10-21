@@ -1,51 +1,54 @@
-import { randomBytes } from "node:crypto";
-import { prisma } from "../../config/index.js";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
-export class AuthService {
-  public async signIn() {
-    const user = await prisma.order.findFirst();
+import type { LoginInput } from "./auth.validation.js";
 
-    if (user.password !== payload.password) {
-      throw new BadRequestException("Incorrect email or password");
-    }
+const JWT_SECRET = process.env.JWT_SECRET;
 
-    const sessionToken = randomBytes(32).toString("hex");
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error("JWT_SECRET must contain at least 32 characters");
+}
 
-    const session = await prisma.session.create({
-      data: {
-        userId: user.id,
-        token: sessionToken,
-      },
-    });
+export async function loginUser(input: LoginInput) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, input.email))
+    .limit(1);
 
-    return session;
+  if (!user) {
+    return null;
   }
 
-  async signUp(payload: CreateUserRequestDTO) {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: payload.email },
-    });
+  const passwordMatches = await bcrypt.compare(
+    input.password,
+    user.passwordHash,
+  );
 
-    if (existingUser) {
-      throw new BadRequestException("User already exists");
-    }
-
-    const user = await prisma.user.create({
-      data: {
-        email: payload.email,
-        password: payload.password,
-      },
-    });
-
-    const sessionToken = randomBytes(32).toString("hex");
-
-    const session = await prisma.session.create({
-      data: {
-        userId: user.id,
-        token: sessionToken,
-      },
-    });
-
-    return session;
+  if (!passwordMatches) {
+    return null;
   }
+
+  const token = jwt.sign(
+    {
+      role: user.role,
+    },
+    JWT_SECRET,
+    {
+      subject: user.id,
+      expiresIn: "1h",
+      algorithm: "HS256",
+    },
+  );
+
+  return {
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
+  };
 }

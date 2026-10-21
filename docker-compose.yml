@@ -16,6 +16,19 @@ services:
       retries: 5
       start_period: 10s
 
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: >
+      sh -c "npx prisma migrate deploy && npm run seed"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://orders:orders@db:5432/orders_console
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -25,6 +38,8 @@ services:
       PORT: "4000"
       NODE_ENV: development
       DATABASE_URL: postgresql://orders:orders@db:5432/orders_console
+      JWT_SECRET: 00b99321c493a77966de5769cf14c09ecbfa098d7773125d2c4846c83f6f05bddb766fa8a018acefc9c3c0a638fd36ca12cd7af79b54829b09043cd414ef93bf
+      CLIENT_ORIGIN: "http://localhost:5173"
     ports:
       - "8000:4000"
     volumes:
@@ -34,6 +49,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   db-data:
