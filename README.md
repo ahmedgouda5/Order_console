@@ -148,6 +148,7 @@ If she cannot answer: don't build a hard delete. Instead, add a filter that hide
 
 ## 8. What I skipped and why
 
+- **Database indexes:** not added. The brief asks for them. The list works at 50,000 rows, but status filter, search and sort do a scan. Planned: index on `status`, on `created_at` and `amount` (sorting), and a trigram index for name/email search.
 - **Optional tasks (O1, O2):** not done, to stay inside the time budget.
 - **Automated tests:** only the idempotency script is a real test. The rapid-filter check is manual (type in search, change the status filter quickly, and the UI shows only the latest result).
 - **Migrations:** I use `drizzle-kit push`, no migration files.
