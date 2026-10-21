@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 
+import { db, users } from "../../db/index.js";
 import type { LoginInput } from "./auth.validation.js";
+import { generateToken } from "../../utils/token.js";
+import { comparePassword } from "../../utils/hashPassword.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -21,7 +23,7 @@ export async function loginUser(input: LoginInput) {
     return null;
   }
 
-  const passwordMatches = await bcrypt.compare(
+  const passwordMatches = await comparePassword(
     input.password,
     user.passwordHash,
   );
@@ -30,17 +32,7 @@ export async function loginUser(input: LoginInput) {
     return null;
   }
 
-  const token = jwt.sign(
-    {
-      role: user.role,
-    },
-    JWT_SECRET,
-    {
-      subject: user.id,
-      expiresIn: "1h",
-      algorithm: "HS256",
-    },
-  );
+  const token = generateToken(user);
 
   return {
     token,

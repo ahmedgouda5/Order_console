@@ -1,15 +1,23 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "drizzle-kit";
 
+import { loadEnv } from "./src/db/env.js";
+
+loadEnv();
+
+// Globs in drizzle-kit need posix separators, even on Windows.
+const apiRoot = fileURLToPath(new URL(".", import.meta.url)).replace(/\\/g, "/");
+
+const connectionString =
+  process.env.DATABASE_URL ??
+  "postgresql://postgres:postgres@localhost:5432/orders_console";
+
 export default defineConfig({
-  schema: "./src/db/schema/*",
-  out: "./drizzle",
+  schema: `${apiRoot}src/db/schema/*.ts`,
+  out: `${apiRoot}drizzle`,
   dialect: "postgresql",
   dbCredentials: {
-    host: process.env.DB_HOST || "localhost",
-    port: Number(process.env.DB_PORT) || 5432,
-    user: process.env.DB_USER || "postgres",
-    password: process.env.DB_PASSWORD || "postgres",
-    database: process.env.DB_NAME || "postgres",
-    ssl: false,
+    url: connectionString,
   },
 });

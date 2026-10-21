@@ -7,7 +7,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-export const userRoleEnum = pgEnum("user_role", ["ADMIN", "USER"]);
+export const userRoleEnum = pgEnum("user_role", ["ADMIN", "MANAGER", "USER"]);
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),

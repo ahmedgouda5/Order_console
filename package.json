@@ -4,7 +4,8 @@
   "private": true,
   "description": "SARH Business Solutions Orders Console - monorepo",
   "workspaces": [
-    "apps/*"
+    "apps/api",
+    "apps/web"
   ],
   "scripts": {
     "dev:api": "npm run dev --workspace @orders-console/api",
@@ -12,7 +13,9 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "seed": "npm run seed --workspace @orders-console/api",
+    "seed": "tsx apps/api/src/db/seed.ts",
+    "db:generate": "drizzle-kit generate --config apps/api/drizzle.config.ts",
+    "db:push": "drizzle-kit push --config apps/api/drizzle.config.ts",
     "docker:build": "docker compose up --build -d",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
@@ -36,6 +39,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^1.0.0-rc.4"
+    "drizzle-kit": "^1.0.0-rc.4",
+    "tsx": "^4.19.2"
   }
 }

@@ -14,6 +14,10 @@ app.use(
 );
 app.use(express.json());
 
+app.use("/", (_, res) => {
+  res.status(200).json({ message: "OK" });
+});
+
 app.use("/api/auth", authRouter);
 
 app.listen(4000, () => {
