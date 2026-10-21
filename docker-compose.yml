@@ -37,5 +37,22 @@ services:
       db:
         condition: service_healthy
 
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    command: npm run dev --workspace=apps/web -- --host
+    environment:
+      NODE_ENV: development
+      API_PROXY_TARGET: "http://api:4000"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - /app/node_modules
+      - /app/apps/web/node_modules
+    depends_on:
+      - api
+
 volumes:
   db-data:

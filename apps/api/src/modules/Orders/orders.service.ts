@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  and,
+  asc,
   count,
   desc,
   eq,
@@ -17,6 +19,10 @@ import type {
   ListOrdersByStatusInput,
   ListOrdersInput,
   SearchOrdersInput,
+} from "./orders.validation.js";
+import {
+  orderSortDirections,
+  orderSortFields,
 } from "./orders.validation.js";
 
 function generateOrderNumber(): string {
@@ -77,30 +83,66 @@ export async function createOrder(
   return { order: raced, replayed: true };
 }
 
+export function orderSearchCondition(search: string): SQL | undefined {
+  return or(
+    ilike(orders.customerName, `%${search}%`),
+    ilike(orders.customerEmail, `%${search}%`),
+  );
+}
+
 export async function searchOrders(
   input: SearchOrdersInput,
 ): Promise<OrderRow[]> {
   return db
     .select()
     .from(orders)
-    .where(
-      or(
-        ilike(orders.customerName, `%${input.search}%`),
-        ilike(orders.customerEmail, `%${input.search}%`),
-      ),
-    )
+    .where(orderSearchCondition(input.search))
     .orderBy(desc(orders.createdAt));
+}
+
+const orderSortColumns = {
+  createdAt: orders.createdAt,
+  amount: orders.amount,
+} as const satisfies Record<(typeof orderSortFields)[number], unknown>;
+
+type OrderSort = {
+  by: (typeof orderSortFields)[number];
+  direction: (typeof orderSortDirections)[number];
+};
+
+function orderSortExpression(sort: OrderSort) {
+  const column = orderSortColumns[sort.by];
+
+  if (!column) {
+    return desc(orders.createdAt);
+  }
+
+  return sort.direction === "asc" ? asc(column) : desc(column);
+}
+
+function combineConditions(
+  conditions: Array<SQL | undefined>,
+): SQL | undefined {
+  const defined = conditions.filter((condition) => condition != null);
+
+  if (defined.length === 0) {
+    return undefined;
+  }
+
+  return and(...defined);
 }
 
 type PagingParams = {
   page: number;
   limit: number;
+  sort: OrderSort | null;
   conditions?: SQL | undefined;
 };
 
 async function fetchOrderPage({
   page,
   limit,
+  sort,
   conditions,
 }: PagingParams): Promise<{ orders: OrderRow[]; total: number }> {
   const offset = (page - 1) * limit;
@@ -110,7 +152,9 @@ async function fetchOrderPage({
       .select()
       .from(orders)
       .where(conditions)
-      .orderBy(desc(orders.createdAt))
+      .orderBy(
+        sort ? orderSortExpression(sort) : desc(orders.createdAt),
+      )
       .limit(limit)
       .offset(offset),
     db.select({ value: count() }).from(orders).where(conditions),
@@ -119,12 +163,30 @@ async function fetchOrderPage({
   return { orders: rows, total: Number(totals?.value ?? 0) };
 }
 
+function resolveSort(
+  input: { sortBy?: OrderSort["by"]; sortOrder?: OrderSort["direction"] },
+): OrderSort | null {
+  if (!input.sortBy) {
+    return null;
+  }
+
+  return {
+    by: input.sortBy,
+    direction: input.sortOrder ?? "desc",
+  };
+}
+
 export async function listOrders(
   input: ListOrdersInput,
 ): Promise<{ orders: OrderRow[]; total: number }> {
   return fetchOrderPage({
     page: input.page ?? 1,
     limit: input.limit ?? 20,
+    sort: resolveSort(input),
+    conditions: combineConditions([
+      input.status ? eq(orders.status, input.status) : undefined,
+      input.search ? orderSearchCondition(input.search) : undefined,
+    ]),
   });
 }
 
@@ -134,6 +196,7 @@ export async function listOrdersByStatus(
   return fetchOrderPage({
     page: input.page ?? 1,
     limit: input.limit ?? 20,
+    sort: resolveSort(input),
     conditions: eq(orders.status, input.status),
   });
 }

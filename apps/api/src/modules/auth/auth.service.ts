@@ -12,6 +12,20 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error("JWT_SECRET must contain at least 32 characters");
 }
 
+export const sessionUserColumns = {
+  id: users.id,
+  name: users.name,
+  email: users.email,
+  role: users.role,
+} as const;
+
+export type SessionUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: (typeof users.$inferSelect)["role"];
+};
+
 export async function loginUser(input: LoginInput) {
   const [user] = await db
     .select()
@@ -43,4 +57,14 @@ export async function loginUser(input: LoginInput) {
       role: user.role,
     },
   };
+}
+
+export async function getCurrentUser(userId: string): Promise<SessionUser | null> {
+  const [user] = await db
+    .select(sessionUserColumns)
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user ?? null;
 }
