@@ -43,8 +43,8 @@ API_PROXY_TARGET=http://localhost:8000
 ## 2. Run
 
 ```bash
-npm install                    # needed for the host commands below
-docker compose up -d --build   # db + api + web
+npm install                    # on the host: needed for db:push and seed (they run outside Docker)
+docker compose up -d --build   # db + api + web (Docker installs its own packages inside the images)
 docker compose ps              # wait until db is (healthy)
 npm run db:push                # create tables
 npm run seed                   # 50,000 orders + users
@@ -72,6 +72,27 @@ node scripts/idempotency-race-test.mjs 3 identical 5
 It sends several identical `POST /api/orders` requests **at the same time** with the same `Idempotency-Key`.
 Then it checks the database: exactly **one** order exists, and all responses returned the same order.
 Prints `PASS` / `FAIL`.
+
+Result of a real run (3 iterations, 5 parallel identical requests each):
+
+```text
+PS A:\projects\order_console> node scripts/idempotency-race-test.mjs 3 identical 5
+#1 key=identical_5r_1_1792612373140 statuses=[200,201,200,200,200] idsEqual=true numbersEqual=true rows 0->1 -> PASS
+#2 key=identical_5r_2_1792612373325 statuses=[201,200,200,200,200] idsEqual=true numbersEqual=true rows 0->1 -> PASS
+#3 key=identical_5r_3_1792612373384 statuses=[201,200,200,200,200] idsEqual=true numbersEqual=true rows 0->1 -> PASS
+
+Run config: mode=identical requestsPerRace=5
+┌─────────┬───────────┬───────────────────────┬──────────┬──────────────┬────────────┬───────────┬─────────┐
+│ (index) │ iteration │ statuses              │ idsEqual │ numbersEqual │ rowsBefore │ rowsAfter │ verdict │
+├─────────┼───────────┼───────────────────────┼──────────┼──────────────┼────────────┼───────────┼─────────┤
+│ 0       │ 1         │ '200,201,200,200,200' │ true     │ true         │ 0          │ 1         │ 'PASS'  │
+│ 1       │ 2         │ '201,200,200,200,200' │ true     │ true         │ 0          │ 1         │ 'PASS'  │
+│ 2       │ 3         │ '201,200,200,200,200' │ true     │ true         │ 0          │ 1         │ 'PASS'  │
+└─────────┴───────────┴───────────────────────┴──────────┴──────────────┴────────────┴───────────┴─────────┘
+ALL 3 RACE TESTS PASSED
+```
+
+How to read it: in each race, exactly one request got `201` (created) and the other four got `200` (replay of the same order). The order id and number are identical in all responses, and the table gains exactly one row (`0 -> 1`).
 
 Other checks:
 
