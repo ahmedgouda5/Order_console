@@ -5,7 +5,10 @@ import {
   createOrderFormSchema,
   flattenZodIssues,
 } from "../schemas/createOrder.schema";
-import type { CreateOrderFields } from "../schemas/createOrder.schema";
+import type {
+  CreateOrderFields,
+  OrderItemFormValues,
+} from "../schemas/createOrder.schema";
 import { useCreateOrderMutation } from "../hooks/useCreateOrderMutation";
 import {
   ORDER_STATUSES,
@@ -14,24 +17,74 @@ import {
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "SAR", "AED"] as const;
 
+function emptyItem(): OrderItemFormValues {
+  return { name: "", quantity: "1", unitPrice: "" };
+}
+
 const EMPTY_FIELDS: CreateOrderFields = {
   customerName: "",
   customerEmail: "",
   status: "PENDING",
-  amount: "",
   currency: "USD",
+  items: [emptyItem()],
 };
+
+function lineTotal(item: OrderItemFormValues): number {
+  const quantity = Number(item.quantity);
+  const unitPrice = Number(item.unitPrice);
+
+  if (!Number.isFinite(quantity) || !Number.isFinite(unitPrice)) {
+    return 0;
+  }
+
+  return quantity * unitPrice;
+}
 
 export function CreateOrderPage() {
   const [fields, setFields] = useState<CreateOrderFields>(EMPTY_FIELDS);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const { result, isSubmitting, error, submit, reset } = useCreateOrderMutation();
 
-  const setField = <K extends keyof CreateOrderFields>(
+  const orderTotal = fields.items.reduce(
+    (sum, item) => sum + lineTotal(item),
+    0,
+  );
+
+  const setField = <K extends keyof Omit<CreateOrderFields, "items">>(
     key: K,
     value: CreateOrderFields[K],
   ) => {
     setFields((previous) => ({ ...previous, [key]: value }));
+  };
+
+  const setItem = (
+    index: number,
+    key: keyof OrderItemFormValues,
+    value: string,
+  ) => {
+    setFields((previous) => ({
+      ...previous,
+      items: previous.items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [key]: value } : item,
+      ),
+    }));
+  };
+
+  const addItem = () => {
+    setFields((previous) => ({
+      ...previous,
+      items: [...previous.items, emptyItem()],
+    }));
+  };
+
+  const removeItem = (index: number) => {
+    setFields((previous) => ({
+      ...previous,
+      items:
+        previous.items.length > 1
+          ? previous.items.filter((_, itemIndex) => itemIndex !== index)
+          : previous.items,
+    }));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -41,8 +94,8 @@ export function CreateOrderPage() {
       customerName: fields.customerName,
       customerEmail: fields.customerEmail,
       status: fields.status,
-      amount: fields.amount,
       currency: fields.currency,
+      items: fields.items,
     });
 
     if (!parsed.success) {
@@ -57,8 +110,13 @@ export function CreateOrderPage() {
         customerName: parsed.data.customerName,
         customerEmail: parsed.data.customerEmail,
         status: parsed.data.status,
-        amount: parsed.data.amount.toFixed(2),
         currency: parsed.data.currency,
+        items: parsed.data.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice.toFixed(2),
+        })),
+        amount: orderTotal.toFixed(2),
         idempotencyKey: crypto.randomUUID(),
       },
     );
@@ -78,13 +136,17 @@ export function CreateOrderPage() {
     ) : null;
   };
 
+  const renderItemError = (index: number, fieldName: string) => {
+    return renderFieldError(`items.${index}.${fieldName}`);
+  };
+
   return (
     <section className="page page--narrow">
       <header className="page-header">
         <div>
           <h1>Create order</h1>
           <p className="muted">
-            New orders are protected against duplicate submissions by an idempotency key.
+            Line items are sent to the API and the server recomputes the total.
           </p>
         </div>
         <Link to="/orders" className="button button--secondary">
@@ -99,7 +161,7 @@ export function CreateOrderPage() {
           <p>
             Order <strong className="mono">{result.order.orderNumber}</strong> for{" "}
             <strong>{result.order.customerName}</strong> ({result.order.status},{" "}
-            {result.order.amount} {result.order.currency}).
+            {result.order.amount} {result.order.currency}, {result.order.status === undefined ? 0 : ""}).
           </p>
           <div className="success-actions">
             <Link to="/orders" className="button">
@@ -185,26 +247,95 @@ export function CreateOrderPage() {
             </label>
           </div>
 
-          <label className="field">
-            <span className="field-label">Amount</span>
-            <input
-              type="number"
-              name="amount"
-              min="0.01"
-              step="0.01"
-              value={fields.amount}
-              onChange={(event) => setField("amount", event.target.value)}
-              disabled={isSubmitting}
-              aria-invalid={fieldErrors.amount !== undefined}
-            />
-            {renderFieldError("amount")}
-          </label>
+          <div className="items-section">
+            <div className="items-header">
+              <span className="field-label">Line items</span>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={addItem}
+                disabled={isSubmitting || fields.items.length >= 20}
+              >
+                + Add item
+              </button>
+            </div>
+
+            {fieldErrors.items !== undefined && (
+              <span className="error-text" role="alert">
+                {fieldErrors.items.join(" ")}
+              </span>
+            )}
+
+            {fields.items.map((item, index) => (
+              <div className="item-row" key={index}>
+                <label className="field item-name">
+                  <span className="field-label">Item name</span>
+                  <input
+                    value={item.name}
+                    onChange={(event) => setItem(index, "name", event.target.value)}
+                    disabled={isSubmitting}
+                    aria-invalid={fieldErrors[`items.${index}.name`] !== undefined}
+                  />
+                  {renderItemError(index, "name")}
+                </label>
+
+                <label className="field item-quantity">
+                  <span className="field-label">Qty</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={item.quantity}
+                    onChange={(event) => setItem(index, "quantity", event.target.value)}
+                    disabled={isSubmitting}
+                    aria-invalid={fieldErrors[`items.${index}.quantity`] !== undefined}
+                  />
+                  {renderItemError(index, "quantity")}
+                </label>
+
+                <label className="field item-price">
+                  <span className="field-label">Unit price</span>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={item.unitPrice}
+                    onChange={(event) => setItem(index, "unitPrice", event.target.value)}
+                    disabled={isSubmitting}
+                    aria-invalid={fieldErrors[`items.${index}.unitPrice`] !== undefined}
+                  />
+                  {renderItemError(index, "unitPrice")}
+                </label>
+
+                <span className="item-line-total mono" title="Line total">
+                  {lineTotal(item).toFixed(2)}
+                </span>
+
+                <button
+                  type="button"
+                  className="button button--ghost item-remove"
+                  onClick={() => removeItem(index)}
+                  disabled={isSubmitting || fields.items.length <= 1}
+                  aria-label={`Remove line item ${index + 1}`}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            <div className="order-total">
+              <span>Order total</span>
+              <strong className="mono">
+                {orderTotal.toFixed(2)} {fields.currency}
+              </strong>
+            </div>
+          </div>
 
           <button className="button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Creating order…" : "Create order"}
           </button>
           <p className="muted form-hint">
-            Each submission sends a unique {`Idempotency-Key`} header; accidental double
+            Each submission sends a unique Idempotency-Key header; accidental double
             submissions cannot create duplicate orders — enforced by the backend.
           </p>
         </form>
