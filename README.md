@@ -43,9 +43,9 @@ API_PROXY_TARGET=http://localhost:8000
 ## 2. Run
 
 ```bash
+npm install                    # needed for the host commands below
 docker compose up -d --build   # db + api + web
 docker compose ps              # wait until db is (healthy)
-npm install                    # needed for the host commands below
 npm run db:push                # create tables
 npm run seed                   # 50,000 orders + users
 ```
