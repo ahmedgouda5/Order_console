@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import authRouter from "./modules/auth/auth.routes.js";
+import ordersRouter from "./modules/orders/orders.routes.js";
 
 const app = express();
 
@@ -14,12 +15,15 @@ app.use(
 );
 app.use(express.json());
 
-app.use("/", (_, res) => {
-  res.status(200).json({ message: "OK" });
+app.get("/", (_, res) => {
+  res.json({ message: "hello world" });
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/orders", ordersRouter);
 
-app.listen(4000, () => {
-  console.log("Server is running on port 4000");
+const port = Number(process.env.PORT ?? 4000);
+
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
