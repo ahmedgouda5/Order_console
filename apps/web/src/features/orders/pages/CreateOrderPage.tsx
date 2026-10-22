@@ -41,6 +41,8 @@ function lineTotal(item: OrderItemFormValues): number {
 }
 
 export function CreateOrderPage() {
+  const idempotencyKeyRef = useRef<string | null>(null);
+
   const [fields, setFields] = useState<CreateOrderFields>(EMPTY_FIELDS);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const { result, isSubmitting, error, submit, reset } = useCreateOrderMutation();
@@ -104,6 +106,10 @@ export function CreateOrderPage() {
     }
 
     setFieldErrors({});
+      const key =
+    idempotencyKeyRef.current ?? crypto.randomUUID();
+
+  idempotencyKeyRef.current = key;
 
     const created = await submit(
       {
@@ -117,12 +123,14 @@ export function CreateOrderPage() {
           unitPrice: item.unitPrice.toFixed(2),
         })),
         amount: orderTotal.toFixed(2),
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey:key
       },
     );
 
     if (created) {
       setFields(EMPTY_FIELDS);
+        idempotencyKeyRef.current = null;
+
     }
   };
 
